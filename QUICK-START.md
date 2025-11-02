@@ -9,7 +9,11 @@ export GITHUB_TOKEN='your_github_token'
 
 No Overleaf login needed. No Python, no installation, no dependencies.
 
-## Creating a Paper Repo (2 minutes)
+## Two Workflows Supported
+
+### Workflow 1: Overleaf-First (Someone Else Started It)
+
+Use this when collaborators already have an Overleaf project:
 
 ```bash
 # 1. Get the Overleaf project ID from the URL
@@ -25,6 +29,26 @@ cd /path/to/overleaf-sync
 #    Add two secrets:
 #      - OVERLEAF_PROJECT_ID = 507f1f77bcf86cd799439011
 #      - OVERLEAF_GIT_TOKEN = <from https://www.overleaf.com/user/settings>
+```
+
+### Workflow 2: GitHub-First (You Start It)
+
+Use this when you want to start from GitHub:
+
+```bash
+# 1. Run the setup script (no Overleaf ID yet!)
+cd /path/to/overleaf-sync
+./setup-paper-repo.sh "my-paper-name"
+
+# 2. Import the GitHub repo to Overleaf:
+#    - Go to: https://www.overleaf.com/project
+#    - Click 'New Project' → 'Import from GitHub'
+#    - Select your repository
+
+# 3. Get the Overleaf project ID and re-run:
+./setup-paper-repo.sh "my-paper-name" "507f1f77bcf86cd799439011"
+
+# 4. Add GitHub secrets as usual (script will tell you)
 ```
 
 ## If Setup Had Issues

@@ -9,13 +9,19 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Check arguments
-if [ $# -lt 2 ]; then
-    echo -e "${RED}Usage: $0 <repo-name> <overleaf-project-id> [github-org] [--retry]${NC}"
+if [ $# -lt 1 ]; then
+    echo -e "${RED}Usage: $0 <repo-name> [overleaf-project-id] [github-org] [--retry]${NC}"
     echo ""
-    echo "Example:"
+    echo "Two workflows supported:"
+    echo ""
+    echo -e "${BLUE}1. Overleaf-first workflow${NC} (existing Overleaf project):"
     echo "  $0 \"my-paper\" \"507f1f77bcf86cd799439011\""
     echo "  $0 \"my-paper\" \"507f1f77bcf86cd799439011\" \"noise-lab\""
-    echo "  $0 \"my-paper\" \"507f1f77bcf86cd799439011\" \"\" --retry  # Retry failed setup"
+    echo ""
+    echo -e "${BLUE}2. GitHub-first workflow${NC} (existing GitHub repo):"
+    echo "  $0 \"my-paper\""
+    echo "  $0 \"my-paper\" \"\" \"noise-lab\""
+    echo "  (After running, import the GitHub repo to Overleaf, then re-run with project ID)"
     echo ""
     echo "Find your Overleaf project ID in the URL:"
     echo "  https://www.overleaf.com/project/YOUR_PROJECT_ID"
@@ -23,9 +29,10 @@ if [ $# -lt 2 ]; then
 fi
 
 REPO_NAME=$1
-OVERLEAF_ID=$2
+OVERLEAF_ID=${2:-}
 GITHUB_ORG=${3:-}
 RETRY_MODE=false
+GITHUB_FIRST_MODE=false
 
 # Check for --retry flag
 for arg in "$@"; do
@@ -34,18 +41,26 @@ for arg in "$@"; do
     fi
 done
 
-# Check if virtual environment is activated
-if [ -z "$VIRTUAL_ENV" ]; then
-    echo -e "${YELLOW}⚠️  Virtual environment not activated!${NC}"
-    echo "Please run: source venv/bin/activate"
-    exit 1
+# Detect workflow mode
+if [ -z "$OVERLEAF_ID" ]; then
+    GITHUB_FIRST_MODE=true
 fi
 
-# Check if ols is installed
-if ! command -v ols &> /dev/null; then
-    echo -e "${RED}❌ Error: ols (overleaf-sync) is not installed${NC}"
-    echo "Run ./install.sh first"
-    exit 1
+# Skip ols checks for GitHub-first mode (not needed yet)
+if [ "$GITHUB_FIRST_MODE" = false ]; then
+    # Check if virtual environment is activated
+    if [ -z "$VIRTUAL_ENV" ]; then
+        echo -e "${YELLOW}⚠️  Virtual environment not activated!${NC}"
+        echo "Please run: source venv/bin/activate"
+        exit 1
+    fi
+
+    # Check if ols is installed
+    if ! command -v ols &> /dev/null; then
+        echo -e "${RED}❌ Error: ols (overleaf-sync) is not installed${NC}"
+        echo "Run ./install.sh first"
+        exit 1
+    fi
 fi
 
 # Check if GITHUB_TOKEN is set
@@ -63,10 +78,16 @@ else
     GITHUB_OWNER=$(curl -s -H "Authorization: token $GITHUB_TOKEN" https://api.github.com/user | python3 -c "import sys, json; print(json.load(sys.stdin)['login'])")
 fi
 
-echo -e "${BLUE}🚀 Setting up paper repository: $REPO_NAME${NC}"
-echo -e "${BLUE}   Overleaf Project: $OVERLEAF_ID${NC}"
-echo -e "${BLUE}   GitHub Owner: $GITHUB_OWNER${NC}"
-echo ""
+if [ "$GITHUB_FIRST_MODE" = true ]; then
+    echo -e "${BLUE}🚀 Setting up paper repository: $REPO_NAME (GitHub-first mode)${NC}"
+    echo -e "${BLUE}   GitHub Owner: $GITHUB_OWNER${NC}"
+    echo ""
+else
+    echo -e "${BLUE}🚀 Setting up paper repository: $REPO_NAME (Overleaf-first mode)${NC}"
+    echo -e "${BLUE}   Overleaf Project: $OVERLEAF_ID${NC}"
+    echo -e "${BLUE}   GitHub Owner: $GITHUB_OWNER${NC}"
+    echo ""
+fi
 
 # Step 1: Create GitHub repository
 echo -e "${GREEN}📝 Step 1: Creating GitHub repository...${NC}"
@@ -125,60 +146,86 @@ EOF
     fi
 fi
 
-# Step 2: Clone Overleaf project using ols
+# Step 2: Handle repository setup based on workflow mode
 echo ""
-echo -e "${GREEN}📥 Step 2: Syncing Overleaf project with ols...${NC}"
 
-if [ -d "$REPO_NAME" ]; then
-    if [ "$RETRY_MODE" = false ]; then
+if [ "$GITHUB_FIRST_MODE" = true ]; then
+    echo -e "${GREEN}📥 Step 2: Cloning from GitHub...${NC}"
+
+    if [ -d "$REPO_NAME" ]; then
         echo -e "${YELLOW}   Directory $REPO_NAME already exists${NC}"
-        read -p "   Do you want to remove it and re-sync? (y/n) " -n 1 -r
+        read -p "   Do you want to remove it and re-clone? (y/n) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rm -rf "$REPO_NAME"
         else
-            echo "   Using existing directory"
+            cd "$REPO_NAME"
         fi
-    else
-        echo -e "${BLUE}   Using existing directory (retry mode)${NC}"
     fi
-fi
 
-if [ ! -d "$REPO_NAME" ]; then
-    mkdir -p "$REPO_NAME"
-fi
-
-cd "$REPO_NAME"
-
-# Initialize git repo if needed
-if [ ! -d ".git" ]; then
-    git init
-    echo -e "${GREEN}   ✓ Initialized git repository${NC}"
-fi
-
-# Add GitHub remote if not exists
-if ! git remote | grep -q "^origin$"; then
-    git remote add origin "https://github.com/$GITHUB_OWNER/$REPO_NAME.git"
-    echo -e "${GREEN}   ✓ Added GitHub remote${NC}"
-fi
-
-# Sync from Overleaf using ols
-echo "   Running ols to sync from Overleaf..."
-echo "   (This will use the project name: $REPO_NAME)"
-
-if ols -n "$REPO_NAME" -p . 2>&1; then
-    echo -e "${GREEN}   ✓ Successfully synced from Overleaf${NC}"
+    if [ ! -d "$REPO_NAME" ]; then
+        git clone "https://github.com/$GITHUB_OWNER/$REPO_NAME.git"
+        cd "$REPO_NAME"
+        echo -e "${GREEN}   ✓ Cloned from GitHub${NC}"
+    fi
 else
-    echo -e "${YELLOW}   ⚠️  ols sync had issues. This might be normal on first run.${NC}"
-    echo "   Try running: cd $REPO_NAME && ols"
-fi
+    echo -e "${GREEN}📥 Step 2: Syncing Overleaf project with ols...${NC}"
 
-cd ..
-cd "$REPO_NAME"
+    if [ -d "$REPO_NAME" ]; then
+        if [ "$RETRY_MODE" = false ]; then
+            echo -e "${YELLOW}   Directory $REPO_NAME already exists${NC}"
+            read -p "   Do you want to remove it and re-sync? (y/n) " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                rm -rf "$REPO_NAME"
+            else
+                echo "   Using existing directory"
+            fi
+        else
+            echo -e "${BLUE}   Using existing directory (retry mode)${NC}"
+        fi
+    fi
+
+    if [ ! -d "$REPO_NAME" ]; then
+        mkdir -p "$REPO_NAME"
+    fi
+
+    cd "$REPO_NAME"
+
+    # Initialize git repo if needed
+    if [ ! -d ".git" ]; then
+        git init
+        echo -e "${GREEN}   ✓ Initialized git repository${NC}"
+    fi
+
+    # Add GitHub remote if not exists
+    if ! git remote | grep -q "^origin$"; then
+        git remote add origin "https://github.com/$GITHUB_OWNER/$REPO_NAME.git"
+        echo -e "${GREEN}   ✓ Added GitHub remote${NC}"
+    fi
+
+    # Sync from Overleaf using ols
+    echo "   Running ols to sync from Overleaf..."
+    echo "   (This will use the project name: $REPO_NAME)"
+
+    if ols -n "$REPO_NAME" -p . 2>&1; then
+        echo -e "${GREEN}   ✓ Successfully synced from Overleaf${NC}"
+    else
+        echo -e "${YELLOW}   ⚠️  ols sync had issues. This might be normal on first run.${NC}"
+        echo "   Try running: cd $REPO_NAME && ols"
+    fi
+
+    cd ..
+    cd "$REPO_NAME"
+fi
 
 # Step 3: Create GitHub Action workflow
 echo ""
-echo -e "${GREEN}⚙️  Step 3: Setting up GitHub Action for hourly sync...${NC}"
+if [ "$GITHUB_FIRST_MODE" = true ]; then
+    echo -e "${GREEN}⚙️  Step 3: Setting up GitHub Action for hourly sync (placeholder)...${NC}"
+else
+    echo -e "${GREEN}⚙️  Step 3: Setting up GitHub Action for hourly sync...${NC}"
+fi
 
 mkdir -p .github/workflows
 
@@ -281,34 +328,53 @@ cd ..
 echo ""
 echo -e "${GREEN}✅ Setup complete!${NC}"
 echo ""
-echo -e "${BLUE}📋 Next Steps:${NC}"
-echo ""
-echo "1. Add GitHub secrets for the hourly sync workflow:"
-echo "   Go to: https://github.com/$GITHUB_OWNER/$REPO_NAME/settings/secrets/actions"
-echo ""
-echo "   Add these two secrets:"
-echo -e "   ${YELLOW}OVERLEAF_PROJECT_ID${NC} = $OVERLEAF_ID"
-echo -e "   ${YELLOW}OVERLEAF_GIT_TOKEN${NC} = <get from Overleaf Account Settings → Git Integration>"
-echo ""
-echo "   To get your Overleaf Git Token:"
-echo "   - Go to: https://www.overleaf.com/user/settings"
-echo "   - Scroll to 'Git Integration'"
-echo "   - Copy the token shown there"
-echo ""
-echo "2. Start working - pure git workflow, no special tools needed!"
-echo -e "   ${YELLOW}cd $REPO_NAME${NC}"
-echo -e "   ${YELLOW}vim main.tex${NC}"
-echo -e "   ${YELLOW}git add . && git commit -m \"Update paper\"${NC}"
-echo -e "   ${YELLOW}git push${NC}"
-echo ""
-echo "   What happens automatically:"
-echo "   ✓ Your push triggers GitHub Action → pushes to Overleaf"
-echo "   ✓ Collaborators see your changes in Overleaf immediately"
-echo "   ✓ Hourly sync pulls collaborator changes from Overleaf to GitHub"
-echo "   ✓ You see collaborator changes with: git pull"
-echo ""
-echo -e "${GREEN}🎉 You're all set! The repo will appear in your project tracker!${NC}"
-echo ""
-echo "If you had issues, re-run with:"
-echo "  $0 \"$REPO_NAME\" \"$OVERLEAF_ID\" \"$GITHUB_ORG\" --retry"
-echo ""
+
+if [ "$GITHUB_FIRST_MODE" = true ]; then
+    echo -e "${BLUE}📋 Next Steps (GitHub-first workflow):${NC}"
+    echo ""
+    echo "1. Import this GitHub repo to Overleaf:"
+    echo "   - Go to: https://www.overleaf.com/project"
+    echo "   - Click 'New Project' → 'Import from GitHub'"
+    echo "   - Select: $GITHUB_OWNER/$REPO_NAME"
+    echo ""
+    echo "2. After importing, get the Overleaf project ID from the URL:"
+    echo "   https://www.overleaf.com/project/YOUR_PROJECT_ID"
+    echo ""
+    echo "3. Re-run this script with the Overleaf project ID:"
+    echo -e "   ${YELLOW}$0 \"$REPO_NAME\" \"YOUR_PROJECT_ID\" \"$GITHUB_ORG\"${NC}"
+    echo ""
+    echo "   This will complete the setup and enable bi-directional sync!"
+    echo ""
+else
+    echo -e "${BLUE}📋 Next Steps:${NC}"
+    echo ""
+    echo "1. Add GitHub secrets for the hourly sync workflow:"
+    echo "   Go to: https://github.com/$GITHUB_OWNER/$REPO_NAME/settings/secrets/actions"
+    echo ""
+    echo "   Add these two secrets:"
+    echo -e "   ${YELLOW}OVERLEAF_PROJECT_ID${NC} = $OVERLEAF_ID"
+    echo -e "   ${YELLOW}OVERLEAF_GIT_TOKEN${NC} = <get from Overleaf Account Settings → Git Integration>"
+    echo ""
+    echo "   To get your Overleaf Git Token:"
+    echo "   - Go to: https://www.overleaf.com/user/settings"
+    echo "   - Scroll to 'Git Integration'"
+    echo "   - Copy the token shown there"
+    echo ""
+    echo "2. Start working - pure git workflow, no special tools needed!"
+    echo -e "   ${YELLOW}cd $REPO_NAME${NC}"
+    echo -e "   ${YELLOW}vim main.tex${NC}"
+    echo -e "   ${YELLOW}git add . && git commit -m \"Update paper\"${NC}"
+    echo -e "   ${YELLOW}git push${NC}"
+    echo ""
+    echo "   What happens automatically:"
+    echo "   ✓ Your push triggers GitHub Action → pushes to Overleaf"
+    echo "   ✓ Collaborators see your changes in Overleaf immediately"
+    echo "   ✓ Hourly sync pulls collaborator changes from Overleaf to GitHub"
+    echo "   ✓ You see collaborator changes with: git pull"
+    echo ""
+    echo -e "${GREEN}🎉 You're all set! The repo will appear in your project tracker!${NC}"
+    echo ""
+    echo "If you had issues, re-run with:"
+    echo "  $0 \"$REPO_NAME\" \"$OVERLEAF_ID\" \"$GITHUB_ORG\" --retry"
+    echo ""
+fi
