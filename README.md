@@ -19,12 +19,24 @@ This tool creates GitHub repositories for Overleaf projects with automatic bidir
 
 ## How It Works
 
+**Two workflows supported:**
+
+### Workflow 1: Overleaf-First (Someone Else Started It)
 1. Someone creates an Overleaf project
 2. You run `./setup-paper-repo.sh` with the project details
 3. Script creates GitHub repo, sets up sync, clones locally
 4. **From then on**: You only touch GitHub/local files
-5. GitHub Action pulls from Overleaf hourly
-6. Your changes automatically push back to Overleaf
+
+### Workflow 2: GitHub-First (You Start It)
+1. You run `./setup-paper-repo.sh` with just a repo name
+2. Script creates GitHub repo and workflow
+3. You import the GitHub repo to Overleaf
+4. You re-run the script with the Overleaf project ID
+5. **From then on**: You only touch GitHub/local files
+
+**In both cases:**
+- GitHub Action pulls from Overleaf hourly
+- Your changes automatically push back to Overleaf
 
 ## Quick Start
 
@@ -39,6 +51,8 @@ That's it! No Overleaf login, no Python, no installation needed.
 
 ### Creating a New Paper Repo
 
+**Option 1: Overleaf-First** (existing Overleaf project):
+
 ```bash
 # 1. Get the Overleaf project ID from the URL:
 # https://www.overleaf.com/project/YOUR_PROJECT_ID_HERE
@@ -49,12 +63,29 @@ That's it! No Overleaf login, no Python, no installation needed.
 # 3. Add two GitHub secrets (script will tell you exactly what to add):
 #    - OVERLEAF_PROJECT_ID
 #    - OVERLEAF_GIT_TOKEN (from https://www.overleaf.com/user/settings)
-
-# That's it! The script will:
-# - Create a GitHub repository
-# - Clone the Overleaf project
-# - Set up automatic bidirectional sync via GitHub Actions
 ```
+
+**Option 2: GitHub-First** (you're starting the project):
+
+```bash
+# 1. Run the setup script (no Overleaf ID yet!)
+./setup-paper-repo.sh "paper-name"
+
+# 2. Import the GitHub repo to Overleaf:
+#    - Go to: https://www.overleaf.com/project
+#    - Click 'New Project' → 'Import from GitHub'
+#    - Select your repository
+
+# 3. Get the Overleaf project ID and re-run:
+./setup-paper-repo.sh "paper-name" "OVERLEAF_PROJECT_ID"
+
+# 4. Add GitHub secrets as usual (script will tell you)
+```
+
+**Both options result in:**
+- A GitHub repository with your paper
+- Automatic bidirectional sync via GitHub Actions
+- Pure git workflow from then on
 
 ### If Setup Fails or You Need to Retry
 
@@ -163,16 +194,26 @@ Creates and configures a new paper repository with Overleaf sync.
 
 **Usage:**
 ```bash
+# Overleaf-first workflow
 ./setup-paper-repo.sh <repo-name> <overleaf-project-id> [github-org]
+
+# GitHub-first workflow
+./setup-paper-repo.sh <repo-name> [github-org]
 ```
 
 **Arguments:**
 - `repo-name`: Name for the GitHub repository (e.g., "fwa-paper")
-- `overleaf-project-id`: ID from Overleaf URL
+- `overleaf-project-id`: (Optional for GitHub-first) ID from Overleaf URL
 - `github-org`: (Optional) GitHub organization, defaults to your username
 
-**Example:**
+**Examples:**
 ```bash
+# Overleaf-first (existing Overleaf project)
+./setup-paper-repo.sh "network-measurement-paper" "507f1f77bcf86cd799439011"
+
+# GitHub-first (you're starting the project)
+./setup-paper-repo.sh "network-measurement-paper"
+# ... then import to Overleaf and re-run with project ID
 ./setup-paper-repo.sh "network-measurement-paper" "507f1f77bcf86cd799439011"
 ```
 
