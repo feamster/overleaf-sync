@@ -1,0 +1,29 @@
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Overleaf sync data
+.ols/
+*.pyc
+
+# Don't track individual paper repos created by the script
+# (each paper repo should be its own git repository)
+*/
+!venv/
