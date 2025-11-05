@@ -1,0 +1,66 @@
+name: Sync with Overleaf
+
+on:
+  push:
+    branches: [master, main]
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write  # Allow the action to push commits
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Setup Overleaf remote
+        env:
+          OVERLEAF_PROJECT_ID: ${{ secrets.OVERLEAF_PROJECT_ID }}
+          OVERLEAF_GIT_TOKEN: ${{ secrets.OVERLEAF_GIT_TOKEN }}
+        run: |
+          # Add Overleaf git remote if not exists
+          if ! git remote | grep -q "^overleaf$"; then
+            git remote add overleaf "https://git@git.overleaf.com/${OVERLEAF_PROJECT_ID}"
+          fi
+
+          # Configure git credential helper to use the token
+          git config credential.helper store
+          echo "https://git:${OVERLEAF_GIT_TOKEN}@git.overleaf.com" > ~/.git-credentials
+
+      - name: Pull from Overleaf (scheduled/manual trigger)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          # Fetch from Overleaf
+          git fetch overleaf master
+
+          # Merge changes from Overleaf (if any)
+          if [ -n "$(git rev-list HEAD..overleaf/master 2>/dev/null)" ]; then
+            git merge overleaf/master -m "Auto-sync from Overleaf [skip ci]" --no-edit --allow-unrelated-histories || {
+              echo "Merge conflict detected. Manual resolution required."
+              exit 1
+            }
+
+            # Push to GitHub
+            BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+            git push origin $BRANCH_NAME
+          fi
+
+      - name: Push to Overleaf (on push event)
+        if: github.event_name == 'push'
+        run: |
+          # Push to Overleaf
+          git push overleaf HEAD:master || {
+            echo "Failed to push to Overleaf. May need manual resolution."
+            exit 1
+          }

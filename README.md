@@ -189,8 +189,38 @@ The sync happens entirely through GitHub Actions using Overleaf's git remote. No
 
 ## Scripts
 
-### `setup-paper-repo.sh`
-Creates and configures a new paper repository with Overleaf sync.
+### `setup-overleaf-sync.py` (Recommended - Simple)
+Clean Python script to add Overleaf sync to any existing GitHub repository.
+
+**Usage:**
+```bash
+# Basic usage
+python3 setup-overleaf-sync.py /path/to/your/repo
+
+# With Overleaf project ID
+python3 setup-overleaf-sync.py /path/to/your/repo --overleaf-id YOUR_PROJECT_ID
+
+# Auto-commit and push
+python3 setup-overleaf-sync.py /path/to/your/repo --overleaf-id YOUR_PROJECT_ID --commit
+```
+
+**What it does:**
+1. Copies `overleaf-sync-workflow.yml` to `.github/workflows/` in your repo
+2. Shows you the exact URL to add GitHub secrets
+3. Provides instructions for the two required secrets
+4. Optionally commits and pushes the workflow file
+
+**Examples:**
+```bash
+# Add sync to an existing repo
+python3 setup-overleaf-sync.py ~/Documents/research/my-paper --overleaf-id abc123
+
+# Add sync and commit in one step
+python3 setup-overleaf-sync.py ~/Documents/research/my-paper --overleaf-id abc123 --commit
+```
+
+### `setup-paper-repo.sh` (Legacy - Full Setup)
+Full bash script that creates repositories and configures Overleaf sync.
 
 **Usage:**
 ```bash
@@ -216,6 +246,8 @@ Creates and configures a new paper repository with Overleaf sync.
 # ... then import to Overleaf and re-run with project ID
 ./setup-paper-repo.sh "network-measurement-paper" "507f1f77bcf86cd799439011"
 ```
+
+**Note:** For most use cases with existing repos, `setup-overleaf-sync.py` is simpler and cleaner.
 
 ## Finding Your Overleaf Project ID
 
