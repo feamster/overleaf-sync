@@ -66,7 +66,7 @@ def main():
 
     # Get script directory and workflow template
     script_dir = Path(__file__).parent
-    workflow_template = script_dir / "overleaf-sync-workflow.yml"
+    workflow_template = script_dir / "overleaf-sync.yml"
 
     if not workflow_template.exists():
         print(f"Error: Workflow template not found at {workflow_template}")
