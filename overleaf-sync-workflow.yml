@@ -1,0 +1,102 @@
+name: Sync with Overleaf
+
+on:
+  push:
+    branches: [master, main]
+  schedule:
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write  # Allow the action to push commits
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Setup Overleaf remote
+        env:
+          OVERLEAF_PROJECT_ID: ${{ secrets.OVERLEAF_PROJECT_ID }}
+          OVERLEAF_GIT_TOKEN: ${{ secrets.OVERLEAF_GIT_TOKEN }}
+        run: |
+          # Add Overleaf git remote if not exists
+          if ! git remote | grep -q "^overleaf$"; then
+            git remote add overleaf "https://git@git.overleaf.com/${OVERLEAF_PROJECT_ID}"
+          fi
+
+          # Configure git credential helper to use the token
+          git config credential.helper store
+          echo "https://git:${OVERLEAF_GIT_TOKEN}@git.overleaf.com" > ~/.git-credentials
+
+      - name: Pull from Overleaf (scheduled/manual trigger)
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          # Fetch from Overleaf
+          git fetch overleaf master
+
+          # Merge changes from Overleaf (if any)
+          if [ -n "$(git rev-list HEAD..overleaf/master 2>/dev/null)" ]; then
+            # Attempt merge
+            if ! git merge overleaf/master -m "Auto-sync from Overleaf [skip ci]" --no-edit --allow-unrelated-histories; then
+              echo "Merge conflict detected. Committing conflicted state for manual resolution."
+
+              # Add all files including those with conflicts
+              git add -A
+
+              # Commit the conflicted state
+              git commit -m "Merge conflict from Overleaf sync - manual resolution needed [skip ci]"
+
+              # Push to a conflict resolution branch
+              CONFLICT_BRANCH="overleaf-sync-conflict-$(date +%Y%m%d-%H%M%S)"
+              git checkout -b $CONFLICT_BRANCH
+              git push origin $CONFLICT_BRANCH
+
+              echo "::warning::Merge conflict detected. Created branch '$CONFLICT_BRANCH' with conflicts for manual resolution."
+              echo "To resolve: git fetch && git checkout $CONFLICT_BRANCH"
+              exit 0
+            fi
+
+            # Push to GitHub if merge was successful
+            BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+            git push origin $BRANCH_NAME
+          fi
+
+      - name: Push to Overleaf (on push event)
+        if: github.event_name == 'push'
+        run: |
+          # Fetch from Overleaf first
+          git fetch overleaf master
+
+          # Check if there are remote changes that need to be merged
+          if [ -n "$(git rev-list HEAD..overleaf/master 2>/dev/null)" ]; then
+            echo "Remote changes detected on Overleaf. Attempting to merge before push."
+
+            # Try to merge remote changes
+            if ! git merge overleaf/master -m "Auto-merge Overleaf changes before push [skip ci]" --no-edit --allow-unrelated-histories; then
+              echo "::warning::Cannot push to Overleaf - merge conflict detected. Run the workflow manually to sync from Overleaf first."
+
+              # Reset to pre-merge state
+              git merge --abort
+              exit 0
+            fi
+
+            # Push the merged result back to GitHub
+            BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD)
+            git push origin $BRANCH_NAME
+          fi
+
+          # Now push to Overleaf
+          git push overleaf HEAD:master || {
+            echo "::error::Failed to push to Overleaf. May need manual resolution."
+            exit 1
+          }
