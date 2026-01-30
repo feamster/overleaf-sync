@@ -31,7 +31,7 @@ jobs:
         run: |
           # Add Overleaf git remote if not exists
           if ! git remote | grep -q "^overleaf$"; then
-            git remote add overleaf "https://git@git.overleaf.com/${OVERLEAF_PROJECT_ID}"
+            git remote add overleaf "https://git.overleaf.com/${OVERLEAF_PROJECT_ID}"
           fi
 
           # Configure git credential helper to use the token
