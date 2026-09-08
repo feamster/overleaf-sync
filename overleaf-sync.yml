@@ -38,16 +38,24 @@ jobs:
           git config credential.helper store
           echo "https://git:${OVERLEAF_GIT_TOKEN}@git.overleaf.com" > ~/.git-credentials
 
+          # Detect the Overleaf default branch (older projects use master, newer ones use main)
+          OL_BRANCH=$(git ls-remote --symref overleaf HEAD | sed -n 's#^ref: refs/heads/\(.*\)\tHEAD$#\1#p')
+          if [ -z "$OL_BRANCH" ]; then
+            OL_BRANCH=$(git ls-remote --heads overleaf | sed -n 's#.*refs/heads/##p' | head -1)
+          fi
+          echo "Overleaf branch: ${OL_BRANCH:-master}"
+          echo "OL_BRANCH=${OL_BRANCH:-master}" >> "$GITHUB_ENV"
+
       - name: Pull from Overleaf (scheduled/manual trigger)
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: |
           # Fetch from Overleaf
-          git fetch overleaf master
+          git fetch overleaf "$OL_BRANCH"
 
           # Merge changes from Overleaf (if any)
-          if [ -n "$(git rev-list HEAD..overleaf/master 2>/dev/null)" ]; then
+          if [ -n "$(git rev-list HEAD.."overleaf/$OL_BRANCH" 2>/dev/null)" ]; then
             # Attempt merge
-            if ! git merge overleaf/master -m "Auto-sync from Overleaf [skip ci]" --no-edit --allow-unrelated-histories; then
+            if ! git merge "overleaf/$OL_BRANCH" -m "Auto-sync from Overleaf [skip ci]" --no-edit --allow-unrelated-histories; then
               echo "Merge conflict detected. Committing conflicted state for manual resolution."
 
               # Add all files including those with conflicts
@@ -82,14 +90,14 @@ jobs:
             echo "Push attempt $((RETRY_COUNT + 1)) of $MAX_RETRIES"
 
             # Fetch from Overleaf first
-            git fetch overleaf master
+            git fetch overleaf "$OL_BRANCH"
 
             # Check if there are remote changes that need to be merged
-            if [ -n "$(git rev-list HEAD..overleaf/master 2>/dev/null)" ]; then
+            if [ -n "$(git rev-list HEAD.."overleaf/$OL_BRANCH" 2>/dev/null)" ]; then
               echo "Remote changes detected on Overleaf. Attempting to merge before push."
 
               # Try to merge remote changes
-              if ! git merge overleaf/master -m "Auto-merge Overleaf changes before push [skip ci]" --no-edit --allow-unrelated-histories; then
+              if ! git merge "overleaf/$OL_BRANCH" -m "Auto-merge Overleaf changes before push [skip ci]" --no-edit --allow-unrelated-histories; then
                 echo "::warning::Cannot push to Overleaf - merge conflict detected. Run the workflow manually to sync from Overleaf first."
 
                 # Reset to pre-merge state
@@ -103,7 +111,7 @@ jobs:
             fi
 
             # Try to push to Overleaf
-            if git push overleaf HEAD:master; then
+            if git push overleaf "HEAD:$OL_BRANCH"; then
               echo "Successfully pushed to Overleaf"
               exit 0
             else
